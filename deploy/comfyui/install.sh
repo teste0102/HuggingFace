@@ -42,7 +42,7 @@ as_comfy "VIRTUAL_ENV='$VENV' uv pip install -r '$MGR/requirements.txt'"
 
 # config.ini seguro (não sobrescreve um existente)
 CFG_DIR="$COMFY_DIR/user/__manager"
-install -d -o "$COMFY_USER" -g "$COMFY_USER" "$CFG_DIR"
+as_comfy "mkdir -p '$CFG_DIR'"
 if [ ! -f "$CFG_DIR/config.ini" ]; then
   install -o "$COMFY_USER" -g "$COMFY_USER" -m 0640 "$HERE/config.ini" "$CFG_DIR/config.ini"
 else
