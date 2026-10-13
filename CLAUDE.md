@@ -14,3 +14,9 @@ Contexto de trabalho envolvendo animação facial em tempo real (WarpTuber/LiveP
 - Projeto local em `C:\Users\User\Desktop\face`
 - Dependência: cuDNN 8.9.7 para CUDA 12, em `C:\Users\User\Desktop\face\cudnn-windows-x86_64-8.9.7.29_cuda12-archive` — estrutura completa e verificada (bin/include/lib/x64 + LICENSE). Precisa ser copiada para dentro do CUDA Toolkit instalado para ter efeito.
 - Acesso a essa pasta só é possível via sessão local do Claude Code (Desktop app ou `claude remote-control`), não pela sessão em nuvem.
+
+## Servidor Linux (alvo do projeto)
+
+- Ubuntu `192.168.15.11` (SSH porta 2222), RTX 5060 Ti 16 GB (Blackwell): exige driver >= 570 e PyTorch cu128+. TensorRT 8 (base do WarpTuber/FasterLivePortrait) não roda em Blackwell.
+- Já roda Frigate e a loja em Docker: não conflitar portas nem tomar a GPU toda.
+- Plano: `docs/PLANO-SERVIDOR.md`. Arquivos de deploy: `deploy/comfyui/`.
