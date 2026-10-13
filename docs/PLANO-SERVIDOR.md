@@ -1,7 +1,7 @@
 # Plano: ferramenta de animação de personagem no servidor Ubuntu
 
 Alvo: `192.168.15.11` (SSH na porta 2222), RTX 5060 Ti 16 GB (Blackwell, sm_120), Xeon, ~40 GB RAM.
-Já em produção no mesmo host: **Frigate** e a **loja** (Docker). Nada deste plano pode derrubar ou disputar porta com eles.
+Projeto **independente**: usuário, pasta (`/opt/comfy`), venv e porta próprios. Não usa Docker e não toca em nenhum serviço que já exista no servidor.
 
 ## 0. Decisões que moldam o plano
 
@@ -9,11 +9,18 @@ Já em produção no mesmo host: **Frigate** e a **loja** (Docker). Nada deste p
 |---|---|---|
 | WarpTuber "como está" no servidor | **Não** | É um pacote Windows (`.bat`, venv embutido, `.trt` compilados) em cima do FasterLivePortrait com **TensorRT 8.x**. TensorRT 8 não suporta Blackwell; o próprio FasterLivePortrait avisa que TRT ≥10 não é compatível. Portar isso é trabalho de pesquisa, não instalação. |
 | Motor de animação no servidor | **LivePortrait em PyTorch via ComfyUI** (`ComfyUI-LivePortraitKJ` + `ComfyUI-AdvancedLivePortrait`) | Mesmos pesos do LivePortrait, roda em PyTorch cu128+, que é o que funciona hoje em Blackwell. |
-| Instalação do ComfyUI | **venv nativo + systemd** (não Docker) | O Manager instala nodes e pacotes pip em tempo de execução; em container isso some a cada recriação ou exige volume do venv inteiro. Nativo isola por usuário/venv, usa o driver do host e não mexe nos containers existentes. |
+| Instalação do ComfyUI | **venv nativo + systemd** (não Docker) | O Manager instala nodes e pacotes pip em tempo de execução; em container isso some a cada recriação ou exige volume do venv inteiro. Nativo isola por usuário/venv e usa o driver do host sem alterar nada do que já está instalado. |
 | Python | **3.12** | Compatível com torch cu128+, mediapipe e a maioria dos custom nodes. 3.13 ainda quebra nodes de visão. |
 | Manager | **Fork `teste0102/ComfyUI-Manager`** clonado em `custom_nodes/comfyui-manager` | É o fork do projeto; dá para customizar canais/políticas depois. |
 | Exposição na rede | `--listen 192.168.15.11 --port 8188` + `ufw` só para a LAN | ComfyUI não tem autenticação. Ver seção 4. |
 | Webcam em tempo real | **Fase 5, com critério de go/no-go** | A webcam e o OBS estão no PC Windows, não no servidor. Tempo real no servidor exige streaming ida e volta pela LAN. |
+
+## Por que o WarpTuber original não roda na 5060 Ti
+
+- O WarpTuber é o FasterLivePortrait empacotado para **Windows** (`.bat`, venv do Windows embutido) e roda os modelos como motores **TensorRT 8.x** (`.trt`).
+- A 5060 Ti é **Blackwell** (compute capability 12.0). Blackwell só é suportada a partir do **CUDA 12.8** e do **TensorRT 10.8**. O TensorRT 8 não conhece essa arquitetura, então não consegue gerar nem carregar os `.trt` nela.
+- O FasterLivePortrait declara que TensorRT 10 não é compatível com o código dele, e o plugin `grid-sample3d` que ele precisa é compilado só até a arquitetura 86 (RTX 30xx).
+- O **LivePortrait em si roda** na 5060 Ti: em PyTorch com CUDA 12.8+ funciona. Por isso o plano usa os mesmos modelos do LivePortrait via ComfyUI.
 
 ## 1. Pré-checagem (não instala nada)
 
@@ -26,8 +33,8 @@ bash preflight.sh
 
 Ele confere e imprime:
 - Driver NVIDIA ≥ 570 (mínimo para CUDA 12.8 / Blackwell). Com driver ≥ 580 dá para usar wheels cu130.
-- VRAM em uso agora (Frigate costuma ocupar 1–3 GB) → define o `--reserve-vram`.
-- Portas livres: 8188 (ComfyUI). Lista também 5000/8971/8554/8555/1984 (Frigate) e tudo que estiver escutando, para conferir a loja.
+- VRAM livre na GPU.
+- Porta 8188 livre (se estiver ocupada, troca-se a porta do ComfyUI; nada existente é alterado).
 - Disco livre na partição de destino (meta: ≥ 80 GB para modelos).
 - `python3.12`, `git`, `ffmpeg`, `ufw` presentes.
 
@@ -54,9 +61,7 @@ Unit: [`deploy/comfyui/comfyui.service`](../deploy/comfyui/comfyui.service).
 
 Pontos importantes:
 - `--listen 192.168.15.11 --port 8188` (nunca `0.0.0.0` se o host tiver outra interface fora da LAN).
-- `--reserve-vram 3` deixa ~3 GB livres para o Frigate. Ajustar com o número da pré-checagem.
-- `Nice=5` e `CPUWeight=50`: o Frigate ganha a disputa de CPU quando os dois estão ocupados.
-- `MemoryMax=24G`: o ComfyUI não consegue levar o host (e a loja) a OOM.
+- `MemoryMax=24G`: o ComfyUI nunca consome a RAM do servidor inteiro.
 - `Restart=on-failure`, logs no `journalctl -u comfyui`.
 
 ```bash
@@ -90,11 +95,12 @@ Como isso se comporta com `--listen 192.168.15.11` (não-loopback), conferido no
   sudo -u comfy /opt/comfy/venv/bin/python /opt/comfy/ComfyUI/custom_nodes/comfyui-manager/cm-cli.py install <nome-ou-url>
   ```
 
-Firewall (ComfyUI não tem login, então a porta só pode ser vista pela LAN):
+Firewall (ComfyUI não tem login, então a porta só pode ser vista pela LAN). **Só se o ufw já estiver ativo** (`sudo ufw status` mostra `Status: active`):
 ```bash
 sudo ufw allow from 192.168.15.0/24 to any port 8188 proto tcp
 sudo ufw deny 8188/tcp
 ```
+Se estiver inativo, **não ativar**: ligar o ufw sem regras para o resto bloquearia o SSH (2222) e os outros serviços do servidor. Nesse caso o `--listen` no IP da LAN já basta.
 Se no futuro precisar de acesso de fora: Tailscale ou reverse proxy com autenticação. Nunca encaminhar a 8188 no roteador.
 
 ## 5. Custom nodes e modelos
@@ -111,15 +117,15 @@ Instalar pela UI do Manager (todos estão no canal padrão), nesta ordem:
 Modelos LivePortrait: os dois nodes baixam sozinhos na primeira execução para `models/liveportrait` (repositório `Kijai/LivePortrait_safetensors` no Hugging Face), ~500 MB. Nada de `.trt` nem ONNX.
 
 Para **gerar o personagem** (imagem do rosto) antes de animar, um modelo base. Recomendação para 16 GB:
-- **SDXL** (ex.: Juggernaut XL) em `models/checkpoints/` — cabe folgado e deixa espaço para o Frigate.
+- **SDXL** (ex.: Juggernaut XL) em `models/checkpoints/` — cabe folgado nos 16 GB.
 - Opcional depois: um modelo de edição de imagem (Flux Kontext / Qwen-Image-Edit em fp8) para manter o mesmo personagem em variações. Só quando a fase 3 estiver estável.
 
 ## 6. Fases até a ferramenta final
 
 | Fase | Entrega | Pronto quando |
 |---|---|---|
-| **1. Base** | Pré-checagem + ComfyUI + Manager + systemd + firewall | `http://192.168.15.11:8188` abre de um PC da LAN, `torch` vê `(12, 0)`, Frigate segue normal (`docker ps`, câmeras gravando). |
-| **2. Animação offline** | Nodes da seção 5 + workflow "retrato + vídeo da webcam gravado → vídeo animado" salvo em `workflows/` neste repo | Gera um clipe de 10 s em 512×512 sem erro de VRAM com o Frigate rodando. |
+| **1. Base** | Pré-checagem + ComfyUI + Manager + systemd + firewall | `http://192.168.15.11:8188` abre de um PC da LAN, `torch` vê `(12, 0)`. |
+| **2. Animação offline** | Nodes da seção 5 + workflow "retrato + vídeo da webcam gravado → vídeo animado" salvo em `workflows/` neste repo | Gera um clipe de 10 s em 512×512 sem erro de VRAM. |
 | **3. Personagem** | Workflow SDXL → rosto do personagem → AdvancedLivePortrait (expressões) | Personagem gerado e animado a partir de um único prompt. |
 | **4. Interface simples** | Página web leve (ou API do ComfyUI chamada por script) com: subir foto/gerar personagem, subir vídeo, baixar resultado | Uso sem abrir o grafo do ComfyUI. |
 | **5. Tempo real (go/no-go)** | Ver abaixo | ≥ 25 fps e < 150 ms de atraso fim a fim na LAN. |
@@ -133,7 +139,6 @@ A webcam e o OBS estão no PC Windows. Duas rotas, decidir com números:
 
 ## 7. Riscos
 
-- **Disputa de GPU com o Frigate**: mitigado por `--reserve-vram`, `Nice` e sem `--highvram`. Se o Frigate começar a perder frames durante render, limitar render a horários ou usar `--lowvram`.
 - **Nodes que compilam CUDA** (ex.: insightface, alguns de face swap) podem não ter build para sm_120. Ficar nos nodes da seção 5 até a fase 3.
 - **Atualizações do ComfyUI** quebram nodes: usar snapshot do Manager antes de cada update.
 
@@ -146,4 +151,4 @@ sudo ufw delete allow from 192.168.15.0/24 to any port 8188 proto tcp
 sudo ufw delete deny 8188/tcp
 sudo userdel comfy && sudo rm -rf /opt/comfy
 ```
-Nada disso toca Docker, Frigate ou a loja.
+Remove só o que este projeto criou.

@@ -11,13 +11,9 @@ WorkingDirectory=/opt/comfy/ComfyUI
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/comfy/venv/bin/python main.py \
   --listen 192.168.15.11 --port 8188 \
-  --reserve-vram 3 \
   --preview-method auto
 Restart=on-failure
 RestartSec=10
-# Frigate e a loja têm prioridade
-Nice=5
-CPUWeight=50
 MemoryMax=24G
 # Endurecimento básico
 NoNewPrivileges=true

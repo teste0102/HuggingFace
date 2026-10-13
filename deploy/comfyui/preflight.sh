@@ -18,8 +18,6 @@ if command -v nvidia-smi >/dev/null; then
   drv=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)
   if [ "$drv" -ge "$MIN_DRIVER" ]; then ok "driver $drv >= $MIN_DRIVER (CUDA 12.8)"; else fail "driver $drv < $MIN_DRIVER: Blackwell exige >= $MIN_DRIVER"; fi
   [ "$drv" -ge 580 ] && ok "driver >= 580: pode usar TORCH_CUDA=cu130"
-  echo "  Processos usando a GPU agora (Frigate deve aparecer aqui):"
-  nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader | sed 's/^/    /'
 else
   fail "nvidia-smi não encontrado"
 fi
@@ -30,14 +28,6 @@ if ss -ltn "( sport = :$COMFY_PORT )" | grep -q LISTEN; then
 else
   ok "porta $COMFY_PORT livre"
 fi
-echo "  Tudo que escuta hoje (conferir Frigate 5000/8971/8554/8555/1984 e a loja):"
-ss -ltnp 2>/dev/null | awk 'NR>1 {print "    " $4 "  " $6}' | sort -u
-
-echo "== Docker"
-if command -v docker >/dev/null; then
-  docker ps --format '    {{.Names}}  {{.Ports}}' 2>/dev/null || warn "sem permissão para docker ps (rode com sudo para ver)"
-fi
-
 echo "== Disco em $TARGET_DIR"
 free_gb=$(df -BG --output=avail "$TARGET_DIR" | tail -1 | tr -dc '0-9')
 if [ "$free_gb" -ge "$MIN_DISK_GB" ]; then ok "${free_gb} GB livres"; else warn "só ${free_gb} GB livres (meta ${MIN_DISK_GB} GB)"; fi

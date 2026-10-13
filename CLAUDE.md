@@ -18,5 +18,5 @@ Contexto de trabalho envolvendo animação facial em tempo real (WarpTuber/LiveP
 ## Servidor Linux (alvo do projeto)
 
 - Ubuntu `192.168.15.11` (SSH porta 2222), RTX 5060 Ti 16 GB (Blackwell): exige driver >= 570 e PyTorch cu128+. TensorRT 8 (base do WarpTuber/FasterLivePortrait) não roda em Blackwell.
-- Já roda Frigate e a loja em Docker: não conflitar portas nem tomar a GPU toda.
+- Projeto independente de qualquer outro serviço do servidor: usuário `comfy`, pasta `/opt/comfy`, porta 8188, sem Docker. Nunca mencionar nem mexer em outros serviços do host.
 - Plano: `docs/PLANO-SERVIDOR.md`. Arquivos de deploy: `deploy/comfyui/`.
