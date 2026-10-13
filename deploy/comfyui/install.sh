@@ -20,7 +20,7 @@ if ! id "$COMFY_USER" >/dev/null 2>&1; then
   usermod -aG video,render "$COMFY_USER" 2>/dev/null || true
 fi
 
-as_comfy() { sudo -u "$COMFY_USER" -H env PATH="$COMFY_HOME/.local/bin:$PATH" bash -c "$1"; }
+as_comfy() { sudo -u "$COMFY_USER" -H env PATH="$COMFY_HOME/.local/bin:$PATH" bash -c "cd \"$COMFY_HOME\" && $1"; }
 
 # uv (gerenciador de venv/pip)
 as_comfy 'command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh'
