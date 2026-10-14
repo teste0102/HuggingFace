@@ -142,6 +142,29 @@ A webcam e o OBS estão no PC Windows. Duas rotas, decidir com números:
 - **Nodes que compilam CUDA** (ex.: insightface, alguns de face swap) podem não ter build para sm_120. Ficar nos nodes da seção 5 até a fase 3.
 - **Atualizações do ComfyUI** quebram nodes: usar snapshot do Manager antes de cada update.
 
+## 7b. Estado da instalação (2026-10-14)
+
+- ComfyUI v0.39.0 em `/opt/comfy` (systemd `comfyui`, porta 8188), PyTorch 2.14 cu130, driver 595. Manager com `security_level=normal`.
+- Página **Personagem** na porta 8189 (aiohttp, com login; limite de 10 tentativas erradas por 5 min; ufw só para a LAN `192.168.0.0/16`). Gera o personagem com SDXL, anima com AdvancedLivePortrait e aceita "usar minha foto" (upload validado como imagem, sem path traversal). Credenciais nunca vão para o repositório.
+- Nodes: AdvancedLivePortrait funcionando, VHS e KJNodes carregados. LivePortraitKJ aguarda reinício do ComfyUI para testar o ajuste dos detectores.
+- Modelos: SDXL base, LivePortrait, MiniMax H3 (21 GB + encoder 15,7 GB + VAEs + LoRA turbo), Qwen Image 2.1. MiniMax H3 Reference-to-Video (até 9 imagens de referência) precisa de modelo principal próprio (23 GB com LoRA), em download limitado.
+- Workflows de API usados pela página: `sdxl_personagem_api`, `personagem_animar_api`, `personagem_expressao_api`, `advanced_liveportrait_min_api`, `minimax_h3_i2v_teste_api`.
+- Padrão de prompt: personagem realista de 21 anos; a foto de referência (personagem de IA) define rosto, boca, tom de pele e proporções e pode ser trocada.
+- Teste MiniMax H3: vídeo de 2,3 s em 90 s, pico de 14,5/16 GB de VRAM; a RAM encostou no `MemoryMax` de 24 GB (subir para ~30 GB se repetir).
+
+### Lição: disco e downloads
+
+O disco do sistema é um NVMe de 512 GB criptografado (dm-crypt). Sem TRIM repassado (falta `discard` em `/etc/crypttab`) a escrita sustentada cai para ~10 MB/s. Downloads sem limite (60–75 MB/s) levaram a carga a 43 e travaram o SSH por cerca de 1h30.
+
+- Baixar modelos grandes com limite de ~6 MB/s e vigiar a carga (pausar acima de 15, retomar abaixo de 6).
+- Não usar "Download all" do ComfyUI para modelos grandes.
+- Conferir `df -h /` antes e durante cada instalação; avisar antes de passar de ~80% de uso.
+- Correção proposta (ainda não aplicada): `discard` no crypttab, `cryptsetup refresh --allow-discards --persistent` e um `fstrim /` em horário calmo.
+
+### Pendências
+
+Reinício do ComfyUI (LivePortraitKJ), atualização do driver NVIDIA com reboot, restringir a 8188 à LAN, remover o sudo sem senha temporário `/etc/sudoers.d/comfy-claude`, versionar o código da página em `deploy/`.
+
 ## 8. Rollback
 
 ```bash
